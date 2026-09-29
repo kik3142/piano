@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#111827" />
+<title>멜로디 피아노</title>
+<style>
+  :root {
+    --bg:#0f172a;
+    --panel:#111827;
+    --panel2:#1f2937;
+    --text:#f8fafc;
+    --muted:#94a3b8;
+    --accent:#38bdf8;
+    --accent2:#22c55e;
+    --danger:#ef4444;
+    --white:#ffffff;
+    --black:#111111;
+    --keyborder:#cbd5e1;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:linear-gradient(180deg,#0f172a,#111827 55%,#0b1220);
+    color:var(--text);
+    min-height:100vh;
+    padding: max(14px, env(safe-area-inset-top)) 14px max(20px, env(safe-area-inset-bottom));
+  }
+  .app { max-width:760px; margin:0 auto; }
+  h1 { font-size:24px; margin:6px 0 4px; }
+  .sub { color:var(--muted); font-size:14px; margin-bottom:14px; }
+  .panel {
+    background:rgba(17,24,39,.96);
+    border:1px solid rgba(148,163,184,.16);
+    border-radius:18px;
+    padding:14px;
+    margin-bottom:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,.18);
+  }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  select,input[type="number"] {
+    width:100%; min-height:44px; border-radius:12px; border:1px solid #334155;
+    background:#0f172a; color:white; padding:0 10px; font-size:15px;
+  }
+  .note-lengths { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
+  button {
+    -webkit-appearance:none; appearance:none; cursor:pointer;
+    border:none; border-radius:12px; min-height:44px; padding:0 12px;
+    font-size:15px; font-weight:700; background:#334155; color:white;
+  }
+  button:active { transform:scale(.98); }
+  .length-btn.active { background:var(--accent); color:#062033; }
+
+  .accidental-row { grid-template-columns:repeat(4,1fr); }
+  .acc-btn.active { background:#f59e0b; color:#2b1600; }
+  .actions { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
+  .play { background:var(--accent2); color:#052e16; }
+  .stop { background:#475569; }
+  .danger { background:var(--danger); }
+  .loop.active { background:#a78bfa; color:#241342; }
+
+  .piano-wrap {
+    overflow-x:auto; padding:6px 0 4px; -webkit-overflow-scrolling:touch; width:100%;
+    background:#0b1220; border-radius:12px;
+  }
+  .piano {
+    position:relative; width:100%; min-width:340px; height:220px;
+    display:flex; user-select:none; touch-action:manipulation;
+  }
+  .white-key {
+    flex:1; position:relative; background:linear-gradient(#fff,#eef2f7);
+    border:1px solid #9ca3af; border-radius:0 0 10px 10px; margin-left:-1px;
+    color:#111827; display:flex; align-items:flex-end; justify-content:center;
+    padding-bottom:12px; font-weight:800; font-size:13px; z-index:1;
+  }
+  .white-key:first-child { margin-left:0; }
+  .white-key.scale-note { background:linear-gradient(#e0f2fe,#bae6fd); }
+  .white-key.playing { background:linear-gradient(#bbf7d0,#4ade80); }
+  .black-key {
+    position:absolute; top:0; width:2.8%; height:61%; background:linear-gradient(#252525,#050505);
+    border-radius:0 0 8px 8px; z-index:3; color:#fff; display:flex; align-items:flex-end;
+    justify-content:center; padding-bottom:8px; font-size:10px; font-weight:700;
+    box-shadow:0 4px 8px rgba(0,0,0,.45);
+  }
+  .black-key.scale-note { background:linear-gradient(#0369a1,#0c4a6e); }
+  .black-key.playing { background:linear-gradient(#16a34a,#14532d); }
+  .sequence {
+    display:flex; gap:8px; overflow-x:auto; padding:3px 1px 7px; min-height:50px;
+    scroll-behavior:smooth;
+  }
+  .chip {
+    flex:0 0 auto; min-width:62px; text-align:center; background:#1e293b;
+    border:1px solid #334155; border-radius:12px; padding:8px 9px; font-size:13px;
+  }
+  .chip.current { border-color:#22c55e; background:#14532d; }
+  .chip .small { color:#94a3b8; font-size:11px; display:block; margin-top:2px; }
+  .empty { color:#64748b; font-size:14px; padding:10px 2px; }
+  .hint { color:#94a3b8; font-size:12px; line-height:1.5; margin-top:8px; }
+  .rest { width:100%; margin-top:8px; background:#7c3aed; }
+  .status { font-size:13px; color:#cbd5e1; margin-top:8px; min-height:20px; }
+  @media (max-width:480px){
+    h1{font-size:21px}
+    .panel{padding:12px}
+    .grid{grid-template-columns:1fr 1fr}
+    .note-lengths{grid-template-columns:repeat(3,1fr)}
+    .actions{grid-template-columns:repeat(2,1fr)}
+    .piano{height:200px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🎹 멜로디 피아노</h1>
+  <div class="sub">C2~C5 · 조표 자동 적용 · 임시표 입력 · 음색 선택</div>
+
+  <div id="previewWarning" class="panel" style="background:#3b2f10;border-color:#7c5f16">
+    <div style="font-size:13px;line-height:1.5">
+      <b>아이폰 참고:</b> ChatGPT나 파일 앱의 미리보기에서는 버튼이 동작하지 않을 수 있습니다.
+      실제 사용 시 Safari에서 웹주소로 열어야 합니다.
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="grid">
+      <div>
+        <label for="keySelect">조성</label>
+        <select id="keySelect">
+          <option value="C|장조" selected>C 장조 · 조표 없음</option>
+          <option value="G|장조">G 장조 · ♯ (1샵)</option>
+          <option value="D|장조">D 장조 · ♯♯ (2샵)</option>
+          <option value="A|장조">A 장조 · ♯♯♯ (3샵)</option>
+          <option value="E|장조">E 장조 · ♯♯♯♯ (4샵)</option>
+          <option value="B|장조">B 장조 · ♯♯♯♯♯ (5샵)</option>
+          <option value="F#|장조">F♯ 장조 · ♯♯♯♯♯♯ (6샵)</option>
+          <option value="F|장조">F 장조 · ♭ (1플랫)</option>
+          <option value="Bb|장조">B♭ 장조 · ♭♭ (2플랫)</option>
+          <option value="Eb|장조">E♭ 장조 · ♭♭♭ (3플랫)</option>
+          <option value="Ab|장조">A♭ 장조 · ♭♭♭♭ (4플랫)</option>
+          <option value="A|단조">A 단조 · 조표 없음</option>
+          <option value="E|단조">E 단조 · ♯ (1샵)</option>
+          <option value="B|단조">B 단조 · ♯♯ (2샵)</option>
+          <option value="F#|단조">F♯ 단조 · ♯♯♯ (3샵)</option>
+          <option value="C#|단조">C♯ 단조 · ♯♯♯♯ (4샵)</option>
+          <option value="D|단조">D 단조 · ♭ (1플랫)</option>
+          <option value="G|단조">G 단조 · ♭♭ (2플랫)</option>
+          <option value="C|단조">C 단조 · ♭♭♭ (3플랫)</option>
+          <option value="F|단조">F 단조 · ♭♭♭♭ (4플랫)</option>
+        </select>
+      </div>
+      <div>
+        <label for="bpm">BPM</label>
+        <input id="bpm" type="number" min="30" max="240" value="90" />
+      </div>
+    </div>
+
+    <div style="margin-top:10px">
+      <label for="instrumentSelect">음색</label>
+      <select id="instrumentSelect">
+        <option value="piano" selected>🎹 피아노</option>
+        <option value="epiano">🎛️ 전자피아노</option>
+        <option value="organ">⛪ 오르간</option>
+        <option value="bell">🔔 벨</option>
+      </select>
+    </div>
+
+    <div style="margin-top:12px">
+      <label>임시표 입력</label>
+      <div class="note-lengths accidental-row">
+        <button class="acc-btn active" data-acc="auto">자동(조표)</button>
+        <button class="acc-btn" data-acc="natural">♮ 제자리</button>
+        <button class="acc-btn" data-acc="sharp">♯ 샵</button>
+        <button class="acc-btn" data-acc="flat">♭ 플랫</button>
+      </div>
+      <div class="hint">♮/♯/♭는 다음 한 음에만 적용되고 자동(조표)로 돌아갑니다.</div>
+    </div>
+
+    <label style="margin-top:12px">입력할 음 길이</label>
+    <div class="note-lengths">
+      <button class="length-btn" data-beats="4">𝅝 온음표</button>
+      <button class="length-btn" data-beats="2">𝅗𝅥 2분</button>
+      <button class="length-btn active" data-beats="1">♩ 4분</button>
+      <button class="length-btn" data-beats="0.5">♪ 8분</button>
+      <button class="length-btn" data-beats="0.25">𝅘𝅥𝅯 16분</button>
+      <button class="length-btn" data-beats="0.125">32분</button>
+      <button class="length-btn" data-beats="1.5">♩. 점4분</button>
+      <button class="length-btn" data-beats="0.75">♪. 점8분</button>
+      <button class="length-btn" data-beats="0.375">점16분</button>
+    </div>
+    <button id="restBtn" class="rest">쉼표 추가</button>
+  </section>
+
+  <section class="panel">
+    <div class="piano-wrap">
+      <div id="piano" class="piano" style="min-width:1100px">
+        <button class="white-key" data-note="C2"><span>도<br><small>C2</small></span></button>
+        <button class="white-key" data-note="D2"><span>레<br><small>D2</small></span></button>
+        <button class="white-key" data-note="E2"><span>미<br><small>E2</small></span></button>
+        <button class="white-key" data-note="F2"><span>파<br><small>F2</small></span></button>
+        <button class="white-key" data-note="G2"><span>솔<br><small>G2</small></span></button>
+        <button class="white-key" data-note="A2"><span>라<br><small>A2</small></span></button>
+        <button class="white-key" data-note="B2"><span>시<br><small>B2</small></span></button>
+        <button class="white-key" data-note="C3"><span>도<br><small>C3</small></span></button>
+        <button class="white-key" data-note="D3"><span>레<br><small>D3</small></span></button>
+        <button class="white-key" data-note="E3"><span>미<br><small>E3</small></span></button>
+        <button class="white-key" data-note="F3"><span>파<br><small>F3</small></span></button>
+        <button class="white-key" data-note="G3"><span>솔<br><small>G3</small></span></button>
+        <button class="white-key" data-note="A3"><span>라<br><small>A3</small></span></button>
+        <button class="white-key" data-note="B3"><span>시<br><small>B3</small></span></button>
+        <button class="white-key" data-note="C4"><span>도<br><small>C4</small></span></button>
+        <button class="white-key" data-note="D4"><span>레<br><small>D4</small></span></button>
+        <button class="white-key" data-note="E4"><span>미<br><small>E4</small></span></button>
+        <button class="white-key" data-note="F4"><span>파<br><small>F4</small></span></button>
+        <button class="white-key" data-note="G4"><span>솔<br><small>G4</small></span></button>
+        <button class="white-key" data-note="A4"><span>라<br><small>A4</small></span></button>
+        <button class="white-key" data-note="B4"><span>시<br><small>B4</small></span></button>
+        <button class="white-key" data-note="C5"><span>도<br><small>C5</small></span></button>
+        <button class="black-key" data-note="C#2" style="width:2.81818%;left:3.13636%">C#</button>
+        <button class="black-key" data-note="D#2" style="width:2.81818%;left:7.68182%">D#</button>
+        <button class="black-key" data-note="F#2" style="width:2.81818%;left:16.77273%">F#</button>
+        <button class="black-key" data-note="G#2" style="width:2.81818%;left:21.31818%">G#</button>
+        <button class="black-key" data-note="A#2" style="width:2.81818%;left:25.86364%">A#</button>
+        <button class="black-key" data-note="C#3" style="width:2.81818%;left:34.95455%">C#</button>
+        <button class="black-key" data-note="D#3" style="width:2.81818%;left:39.50000%">D#</button>
+        <button class="black-key" data-note="F#3" style="width:2.81818%;left:48.59091%">F#</button>
+        <button class="black-key" data-note="G#3" style="width:2.81818%;left:53.13636%">G#</button>
+        <button class="black-key" data-note="A#3" style="width:2.81818%;left:57.68182%">A#</button>
+        <button class="black-key" data-note="C#4" style="width:2.81818%;left:66.77273%">C#</button>
+        <button class="black-key" data-note="D#4" style="width:2.81818%;left:71.31818%">D#</button>
+        <button class="black-key" data-note="F#4" style="width:2.81818%;left:80.40909%">F#</button>
+        <button class="black-key" data-note="G#4" style="width:2.81818%;left:84.95455%">G#</button>
+        <button class="black-key" data-note="A#4" style="width:2.81818%;left:89.50000%">A#</button>
+      </div>
+    </div>
+    <div class="hint">선택한 조성의 조표가 흰건반 입력에 자동 적용됩니다. 예: G장조에서 F를 누르면 F♯이 입력됩니다.</div>
+  </section>
+
+  <section class="panel">
+    <label>입력된 멜로디</label>
+    <div id="sequence" class="sequence"><div class="empty">건반을 눌러 음을 추가하세요.</div></div>
+
+    <div class="actions">
+      <button id="playBtn" class="play">▶ 연속 재생</button>
+      <button id="stopBtn" class="stop">■ 정지</button>
+      <button id="undoBtn">↶ 마지막 삭제</button>
+      <button id="loopBtn" class="loop">🔁 반복 OFF</button>
+    </div>
+    <button id="clearBtn" class="danger" style="width:100%;margin-top:8px">전체 삭제</button>
+    <div id="status" class="status"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const semitoneNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const whiteNames = ['C','D','E','F','G','A','B'];
+  const pitchClass = {'C':0,'C#':1,'Db':1,'D':2,'D#':3,'Eb':3,'E':4,'F':5,'F#':6,'Gb':6,'G':7,'G#':8,'Ab':8,'A':9,'A#':10,'Bb':10,'B':11};
+  const majorPattern=[0,2,4,5,7,9,11];
+  const minorPattern=[0,2,3,5,7,8,10];
+
+  const keys = [
+    // [root, mode, accidental type, count]
+    ['C','장조','',0],
+    ['G','장조','♯',1],
+    ['D','장조','♯',2],
+    ['A','장조','♯',3],
+    ['E','장조','♯',4],
+    ['B','장조','♯',5],
+    ['F#','장조','♯',6],
+    ['F','장조','♭',1],
+    ['Bb','장조','♭',2],
+    ['Eb','장조','♭',3],
+    ['Ab','장조','♭',4],
+
+    ['A','단조','',0],
+    ['E','단조','♯',1],
+    ['B','단조','♯',2],
+    ['F#','단조','♯',3],
+    ['C#','단조','♯',4],
+    ['D','단조','♭',1],
+    ['G','단조','♭',2],
+    ['C','단조','♭',3],
+    ['F','단조','♭',4]
+  ];
+
+  function noteToMidi(note){
+    const m = note.match(/^([A-G]#?)(-?\d+)$/);
+    if(!m) return null;
+    const pc = pitchClass[m[1]];
+    return (parseInt(m[2],10)+1)*12 + pc;
+  }
+
+  function midiToFreq(midi){
+    return 440 * Math.pow(2,(midi-69)/12);
+  }
+
+  const freqs = {};
+  for(let octave=2; octave<=4; octave++){
+    semitoneNames.forEach(n => freqs[`${n}${octave}`] = midiToFreq(noteToMidi(`${n}${octave}`)));
+  }
+  freqs['C5'] = midiToFreq(noteToMidi('C5'));
+
+  const keySelect = document.getElementById('keySelect');
+
+  const piano=document.getElementById('piano');
+  const sequenceEl=document.getElementById('sequence');
+  const bpmEl=document.getElementById('bpm');
+  const instrumentSelect=document.getElementById('instrumentSelect');
+  const statusEl=document.getElementById('status');
+
+  let selectedBeats=1;
+  let accidentalMode="auto";
+  let sequence=[];
+  let isPlaying=false;
+  let stopRequested=false;
+  let loop=false;
+  let audioCtx=null;
+  let activeOscillators=[];
+
+  const solfege = {'C':'도','D':'레','E':'미','F':'파','G':'솔','A':'라','B':'시'};
+
+  // Piano keys are present in the HTML so they remain visible on iPhone even if
+  // a later script feature fails. Here we only attach touch/click behavior.
+  Array.prototype.forEach.call(piano.querySelectorAll('[data-note]'), function(b){
+    b.addEventListener('click', function(e){
+      e.preventDefault();
+      addWrittenNote(b.getAttribute('data-note'));
+    });
+  });
+
+  function getScaleSet(){
+    const [root,mode]=keySelect.value.split('|');
+    const rootPc=pitchClass[root];
+    const pat=mode==='장조'?majorPattern:minorPattern;
+    return new Set(pat.map(x=>(rootPc+x)%12));
+  }
+
+  function notePc(note){
+    const n=note.replace(/[45]/,'');
+    return pitchClass[n];
+  }
+
+  function updateScaleHighlight(){
+    const set=getScaleSet();
+    piano.querySelectorAll('[data-note]').forEach(k=>{
+      k.classList.toggle('scale-note',set.has(notePc(k.dataset.note)));
+    });
+  }
+
+  function beatName(b){
+    return ({
+      4:'온음표',
+      2:'2분음표',
+      1:'4분음표',
+      0.5:'8분음표',
+      0.25:'16분음표',
+      0.125:'32분음표',
+      1.5:'점4분음표',
+      0.75:'점8분음표',
+      0.375:'점16분음표'
+    })[b] || b+'박';
+  }
+
+  function noteDisplay(note){
+    const name = note.replace(/\d+/,'');
+    const mm = note.match(/\d+/); const octave = mm ? mm[0] : '';
+    const m = {'C':'도','C#':'도♯','D':'레','D#':'레♯','E':'미','F':'파','F#':'파♯','G':'솔','G#':'솔♯','A':'라','A#':'라♯','B':'시'};
+    return `${m[name] || name}${octave}`;
+  }
+
+
+  const keySignatureMaps = {
+    // Major
+    'C|장조': {},
+    'G|장조': {'F':1},
+    'D|장조': {'F':1,'C':1},
+    'A|장조': {'F':1,'C':1,'G':1},
+    'E|장조': {'F':1,'C':1,'G':1,'D':1},
+    'B|장조': {'F':1,'C':1,'G':1,'D':1,'A':1},
+    'F#|장조': {'F':1,'C':1,'G':1,'D':1,'A':1,'E':1},
+    'F|장조': {'B':-1},
+    'Bb|장조': {'B':-1,'E':-1},
+    'Eb|장조': {'B':-1,'E':-1,'A':-1},
+    'Ab|장조': {'B':-1,'E':-1,'A':-1,'D':-1},
+
+    // Minor
+    'A|단조': {},
+    'E|단조': {'F':1},
+    'B|단조': {'F':1,'C':1},
+    'F#|단조': {'F':1,'C':1,'G':1},
+    'C#|단조': {'F':1,'C':1,'G':1,'D':1},
+    'D|단조': {'B':-1},
+    'G|단조': {'B':-1,'E':-1},
+    'C|단조': {'B':-1,'E':-1,'A':-1},
+    'F|단조': {'B':-1,'E':-1,'A':-1,'D':-1}
+  };
+
+  function semitoneFromNoteName(name){
+    return pitchClass[name];
+  }
+
+  function noteFromPcAndOctave(pc, octave){
+    const sharpNames=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    return `${sharpNames[(pc+12)%12]}${octave}`;
+  }
+
+  function applyAccidentalToWhiteKey(note){
+    // White-key input is treated as the written staff note.
+    const m = note.match(/^([A-G])(\d+)$/);
+    if(!m) return note;
+
+    const letter=m[1];
+    const octave=parseInt(m[2],10);
+    let delta=0;
+
+    if(accidentalMode==='auto'){
+      const sig = keySignatureMaps[keySelect.value] || {};
+      delta = sig[letter] || 0;
+    } else if(accidentalMode==='natural'){
+      delta = 0;
+    } else if(accidentalMode==='sharp'){
+      delta = 1;
+    } else if(accidentalMode==='flat'){
+      delta = -1;
+    }
+
+    const basePc = pitchClass[letter];
+    let pc = basePc + delta;
+    let outOct = octave;
+
+    if(pc < 0){ pc += 12; outOct -= 1; }
+    if(pc >= 12){ pc -= 12; outOct += 1; }
+
+    let result = noteFromPcAndOctave(pc,outOct);
+
+    // Keep within available C2~C5 range. If altered note falls out, keep original.
+    const midi = noteToMidi(result);
+    if(midi < noteToMidi('C2') || midi > noteToMidi('C5')) result = note;
+
+    if(accidentalMode!=='auto'){
+      accidentalMode='auto';
+      document.querySelectorAll('.acc-btn').forEach(x=>x.classList.toggle('active',x.dataset.acc==='auto'));
+    }
+    return result;
+  }
+
+
+  function consumeOneShotAccidental(){
+    if(accidentalMode!=='auto'){
+      accidentalMode='auto';
+      document.querySelectorAll('.acc-btn').forEach(x=>x.classList.toggle('active',x.dataset.acc==='auto'));
+    }
+  }
+
+  function addWrittenNote(note){
+    // Black keys are literal pitches. White keys are written notes affected by key signature/temporary accidental.
+    const isWhite = /^[A-G]\d+$/.test(note);
+    const actual = isWhite ? applyAccidentalToWhiteKey(note) : note;
+    if(!isWhite) consumeOneShotAccidental();
+    sequence.push({note:actual,beats:selectedBeats,rest:false});
+    renderSequence();
+    previewNote(actual);
+  }
+
+  function addNote(note){
+    sequence.push({note,beats:selectedBeats,rest:false});
+    renderSequence();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.length-btn'), function(btn){
+    btn.addEventListener('click', function(){
+      selectedBeats=parseFloat(btn.getAttribute('data-beats'));
+      Array.prototype.forEach.call(document.querySelectorAll('.length-btn'), function(x){ x.classList.remove('active'); });
+      btn.classList.add('active');
+    });
+  });
+
+
+  Array.prototype.forEach.call(document.querySelectorAll('.acc-btn'), function(btn){
+    btn.addEventListener('click', function(){
+      accidentalMode=btn.getAttribute('data-acc');
+      Array.prototype.forEach.call(document.querySelectorAll('.acc-btn'), function(x){ x.classList.remove('active'); });
+      btn.classList.add('active');
+    });
+  });
+
+  document.getElementById('restBtn').addEventListener('click',()=>{
+    sequence.push({note:null,beats:selectedBeats,rest:true});
+    renderSequence();
+  });
+
+  document.getElementById('undoBtn').addEventListener('click',()=>{
+    if(isPlaying) stopPlayback();
+    sequence.pop(); renderSequence();
+  });
+
+  document.getElementById('clearBtn').addEventListener('click',()=>{
+    stopPlayback(); sequence=[]; renderSequence(); statusEl.textContent='';
+  });
+
+  document.getElementById('loopBtn').addEventListener('click',(e)=>{
+    loop=!loop;
+    e.currentTarget.classList.toggle('active',loop);
+    e.currentTarget.textContent=loop?'🔁 반복 ON':'🔁 반복 OFF';
+  });
+
+  keySelect.addEventListener('change',updateScaleHighlight);
+
+  async function ensureAudio(){
+    if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') await audioCtx.resume();
+  }
+
+  async function previewNote(note){
+    await ensureAudio();
+    playTone(note,0.28);
+  }
+
+  function playTone(note,durationSec){
+    if(!audioCtx) return;
+
+    const now=audioCtx.currentTime;
+    const baseFreq=freqs[note];
+    const type=instrumentSelect.value;
+
+    const master=audioCtx.createGain();
+    master.gain.setValueAtTime(0.0001, now);
+    master.connect(audioCtx.destination);
+
+    const oscs=[];
+
+    function addOsc(freq, wave, gainValue, detune=0){
+      const osc=audioCtx.createOscillator();
+      const gain=audioCtx.createGain();
+      osc.type=wave;
+      osc.frequency.value=freq;
+      osc.detune.value=detune;
+      gain.gain.value=gainValue;
+      osc.connect(gain).connect(master);
+      osc.start(now);
+      oscs.push(osc);
+      return osc;
+    }
+
+    let release = Math.max(0.12, durationSec);
+
+    if(type==='piano'){
+      // Softer, more piano-like additive tone with quick attack and natural decay.
+      addOsc(baseFreq,'sine',0.58);
+      addOsc(baseFreq*2,'sine',0.22);
+      addOsc(baseFreq*3,'sine',0.10);
+      addOsc(baseFreq*4,'triangle',0.05);
+
+      master.gain.exponentialRampToValueAtTime(0.42, now+0.008);
+      master.gain.exponentialRampToValueAtTime(0.16, now+Math.min(0.22,release*0.35));
+      master.gain.exponentialRampToValueAtTime(0.0001, now+release+0.35);
+      release += 0.4;
+    }
+    else if(type==='epiano'){
+      addOsc(baseFreq,'sine',0.55);
+      addOsc(baseFreq*2,'sine',0.18);
+      addOsc(baseFreq*3,'triangle',0.06);
+      addOsc(baseFreq,'sine',0.08, 5);
+      addOsc(baseFreq,'sine',0.08, -5);
+
+      master.gain.exponentialRampToValueAtTime(0.34, now+0.015);
+      master.gain.exponentialRampToValueAtTime(0.12, now+Math.min(0.35,release*0.45));
+      master.gain.exponentialRampToValueAtTime(0.0001, now+release+0.5);
+      release += 0.55;
+    }
+    else if(type==='organ'){
+      addOsc(baseFreq,'sine',0.42);
+      addOsc(baseFreq*2,'sine',0.22);
+      addOsc(baseFreq*3,'sine',0.12);
+      addOsc(baseFreq*4,'sine',0.08);
+
+      master.gain.exponentialRampToValueAtTime(0.30, now+0.03);
+      master.gain.setValueAtTime(0.30, now+Math.max(0.04,release-0.05));
+      master.gain.exponentialRampToValueAtTime(0.0001, now+release+0.10);
+      release += 0.15;
+    }
+    else if(type==='bell'){
+      addOsc(baseFreq,'sine',0.50);
+      addOsc(baseFreq*2.01,'sine',0.22);
+      addOsc(baseFreq*2.99,'sine',0.12);
+      addOsc(baseFreq*4.12,'sine',0.08);
+
+      master.gain.exponentialRampToValueAtTime(0.36, now+0.005);
+      master.gain.exponentialRampToValueAtTime(0.0001, now+release+0.9);
+      release += 0.95;
+    }
+
+    oscs.forEach(osc=>{
+      try { osc.stop(now+release); } catch(e) {}
+      activeOscillators.push(osc);
+      osc.onended=()=> activeOscillators=activeOscillators.filter(x=>x!==osc);
+    });
+  }
+
+  function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  async function playSequence(){
+    if(isPlaying || sequence.length===0) return;
+    await ensureAudio();
+    isPlaying=true; stopRequested=false;
+    statusEl.textContent='재생 중…';
+
+    do {
+      for(let i=0;i<sequence.length;i++){
+        if(stopRequested) break;
+        const item=sequence[i];
+        highlightSequence(i);
+        const bpm=Math.min(240,Math.max(30,parseInt(bpmEl.value)||90));
+        const msPerBeat=60000/bpm;
+        const durMs=msPerBeat*item.beats;
+        if(!item.rest){
+          playTone(item.note,Math.max(0.08,durMs/1000*0.88));
+          highlightPiano(item.note,true);
+        }
+        await wait(durMs);
+        if(!item.rest) highlightPiano(item.note,false);
+      }
+      if(stopRequested || !loop) break;
+    } while(loop);
+
+    clearHighlights();
+    isPlaying=false;
+    statusEl.textContent=stopRequested?'정지됨':'재생 완료';
+  }
+
+  function stopPlayback(){
+    stopRequested=true;
+    activeOscillators.forEach(o=>{ try{o.stop();}catch(e){} });
+    activeOscillators=[];
+    clearHighlights();
+    isPlaying=false;
+    statusEl.textContent='정지됨';
+  }
+
+  function highlightPiano(note,on){
+    const el=piano.querySelector(`[data-note="${note}"]`);
+    if(el) el.classList.toggle('playing',on);
+  }
+
+  function highlightSequence(index){
+    sequenceEl.querySelectorAll('.chip').forEach((c,i)=>c.classList.toggle('current',i===index));
+    const chip=sequenceEl.querySelectorAll('.chip')[index];
+    if(chip) chip.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
+  }
+
+  function clearHighlights(){
+    piano.querySelectorAll('.playing').forEach(x=>x.classList.remove('playing'));
+    sequenceEl.querySelectorAll('.current').forEach(x=>x.classList.remove('current'));
+  }
+
+  function renderSequence(){
+    sequenceEl.innerHTML='';
+    if(sequence.length===0){
+      sequenceEl.innerHTML='<div class="empty">건반을 눌러 음을 추가하세요.</div>';
+      return;
+    }
+    sequence.forEach((x,i)=>{
+      const d=document.createElement('div');
+      d.className='chip';
+      d.innerHTML=`${x.rest?'쉼':noteDisplay(x.note)}<span class="small">${beatName(x.beats)}</span>`;
+      d.title='눌러서 삭제';
+      d.addEventListener('click',()=>{
+        if(isPlaying) return;
+        sequence.splice(i,1); renderSequence();
+      });
+      sequenceEl.appendChild(d);
+    });
+  }
+
+  document.getElementById('playBtn').addEventListener('click',playSequence);
+  document.getElementById('stopBtn').addEventListener('click',stopPlayback);
+
+  updateScaleHighlight();
+})();
+</script>
+</body>
+</html>
