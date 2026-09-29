@@ -117,6 +117,10 @@
 <div class="app">
   <h1>🎹 멜로디 피아노</h1>
   <div class="sub">C2~C5 · 조표 자동 적용 · 임시표 입력 · 음색 선택</div>
+  <section class="panel" id="audioUnlockPanel">
+    <button id="audioUnlockBtn" class="play" style="width:100%">🔊 소리 활성화</button>
+    <div id="audioUnlockStatus" class="status">아이폰에서는 처음 한 번 눌러야 소리가 활성화됩니다.</div>
+  </section>
 
   <div id="previewWarning" class="panel" style="background:#3b2f10;border-color:#7c5f16">
     <div style="font-size:13px;line-height:1.5">
@@ -311,6 +315,8 @@
   const bpmEl=document.getElementById('bpm');
   const instrumentSelect=document.getElementById('instrumentSelect');
   const statusEl=document.getElementById('status');
+  const audioUnlockBtn=document.getElementById('audioUnlockBtn');
+  const audioUnlockStatus=document.getElementById('audioUnlockStatus');
 
   let selectedBeats=1;
   let accidentalMode="auto";
@@ -510,14 +516,25 @@
 
   keySelect.addEventListener('change',updateScaleHighlight);
 
-  async function ensureAudio(){
-    if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-    if(audioCtx.state==='suspended') await audioCtx.resume();
+  function ensureAudio(){
+    if(!audioCtx){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC){
+        audioUnlockStatus.textContent='이 브라우저는 Web Audio를 지원하지 않습니다.';
+        return Promise.reject(new Error('No AudioContext'));
+      }
+      audioCtx = new AC();
+    }
+    if(audioCtx.state === 'suspended'){
+      return audioCtx.resume();
+    }
+    return Promise.resolve();
   }
 
-  async function previewNote(note){
-    await ensureAudio();
-    playTone(note,0.28);
+  function previewNote(note){
+    ensureAudio().then(function(){
+      playTone(note,0.28);
+    }).catch(function(){});
   }
 
   function playTone(note,durationSec){
@@ -605,7 +622,7 @@
 
   async function playSequence(){
     if(isPlaying || sequence.length===0) return;
-    await ensureAudio();
+    try { await ensureAudio(); } catch(e) { return; }
     isPlaying=true; stopRequested=false;
     statusEl.textContent='재생 중…';
 
@@ -675,6 +692,36 @@
       sequenceEl.appendChild(d);
     });
   }
+
+
+  function unlockAudio(){
+    ensureAudio().then(function(){
+      // short test tone to confirm audio is active
+      var osc=audioCtx.createOscillator();
+      var gain=audioCtx.createGain();
+      osc.type='sine';
+      osc.frequency.value=440;
+      gain.gain.setValueAtTime(0.0001,audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.18,audioCtx.currentTime+0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.16);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime+0.18);
+
+      audioUnlockStatus.textContent='소리 활성화 완료 ✓';
+      audioUnlockBtn.textContent='🔊 소리 활성화됨';
+      audioUnlockBtn.disabled=true;
+      audioUnlockBtn.style.opacity='0.75';
+    }).catch(function(){
+      audioUnlockStatus.textContent='소리 활성화에 실패했습니다. Safari에서 다시 열어주세요.';
+    });
+  }
+
+  audioUnlockBtn.addEventListener('click', unlockAudio);
+  audioUnlockBtn.addEventListener('touchend', function(e){
+    e.preventDefault();
+    unlockAudio();
+  }, {passive:false});
 
   document.getElementById('playBtn').addEventListener('click',playSequence);
   document.getElementById('stopBtn').addEventListener('click',stopPlayback);
