@@ -116,7 +116,7 @@
 <body>
 <div class="app">
   <h1>🎹 멜로디 피아노</h1>
-  <div class="sub">C2~C5 · 조표 자동 적용 · 임시표 입력 · 음색 선택</div>
+  <div class="sub">C2~C5 · 조표 자동 적용 · 임시표 · 음색 · 저장/불러오기</div>
   <section class="panel" id="audioUnlockPanel">
     <button id="audioUnlockBtn" class="play" style="width:100%">🔊 소리 활성화</button>
     <div id="audioUnlockStatus" class="status">아이폰에서는 처음 한 번 눌러야 소리가 활성화됩니다.</div>
@@ -255,6 +255,26 @@
     </div>
     <button id="clearBtn" class="danger" style="width:100%;margin-top:8px">전체 삭제</button>
     <div id="status" class="status"></div>
+
+    <div style="margin-top:14px;border-top:1px solid #334155;padding-top:12px">
+      <label for="songName">멜로디 저장</label>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
+        <input id="songName" type="text" placeholder="예: 연습곡 1" style="min-height:44px;border-radius:12px;border:1px solid #334155;background:#0f172a;color:white;padding:0 12px;font-size:15px" />
+        <button id="saveSongBtn" class="play">💾 저장</button>
+      </div>
+
+      <label for="savedSongs" style="margin-top:12px">저장 목록</label>
+      <select id="savedSongs">
+        <option value="">저장된 멜로디 없음</option>
+      </select>
+
+      <div class="actions" style="margin-top:8px">
+        <button id="loadSongBtn">📂 불러오기</button>
+        <button id="deleteSongBtn" class="danger">🗑 삭제</button>
+      </div>
+      <div id="saveStatus" class="status"></div>
+      <div class="hint">저장 내용은 이 아이폰의 Safari 브라우저에 보관됩니다.</div>
+    </div>
   </section>
 </div>
 
@@ -317,6 +337,9 @@
   const statusEl=document.getElementById('status');
   const audioUnlockBtn=document.getElementById('audioUnlockBtn');
   const audioUnlockStatus=document.getElementById('audioUnlockStatus');
+  const songNameEl=document.getElementById('songName');
+  const savedSongsEl=document.getElementById('savedSongs');
+  const saveStatusEl=document.getElementById('saveStatus');
 
   let selectedBeats=1;
   let accidentalMode="auto";
@@ -722,6 +745,140 @@
     e.preventDefault();
     unlockAudio();
   }, {passive:false});
+
+
+  var STORAGE_KEY='melodyPianoSavedSongsV1';
+
+  function getSavedSongs(){
+    try{
+      var raw=localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){
+      return {};
+    }
+  }
+
+  function setSavedSongs(obj){
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(obj));
+  }
+
+  function refreshSavedSongs(selectedName){
+    var songs=getSavedSongs();
+    savedSongsEl.innerHTML='';
+
+    var names=Object.keys(songs).sort(function(a,b){
+      return a.localeCompare(b);
+    });
+
+    if(names.length===0){
+      var empty=document.createElement('option');
+      empty.value='';
+      empty.textContent='저장된 멜로디 없음';
+      savedSongsEl.appendChild(empty);
+      return;
+    }
+
+    names.forEach(function(name){
+      var o=document.createElement('option');
+      o.value=name;
+      o.textContent=name;
+      if(selectedName && name===selectedName) o.selected=true;
+      savedSongsEl.appendChild(o);
+    });
+  }
+
+  function saveCurrentSong(){
+    var name=(songNameEl.value || '').trim();
+    if(!name){
+      saveStatusEl.textContent='저장 이름을 입력하세요.';
+      return;
+    }
+    if(sequence.length===0){
+      saveStatusEl.textContent='저장할 음이 없습니다.';
+      return;
+    }
+
+    var songs=getSavedSongs();
+    songs[name]={
+      sequence: sequence,
+      key: keySelect.value,
+      bpm: bpmEl.value,
+      instrument: instrumentSelect.value,
+      savedAt: new Date().toISOString()
+    };
+
+    try{
+      setSavedSongs(songs);
+      refreshSavedSongs(name);
+      saveStatusEl.textContent='저장 완료 ✓';
+    }catch(e){
+      saveStatusEl.textContent='저장에 실패했습니다.';
+    }
+  }
+
+  function loadSelectedSong(){
+    var name=savedSongsEl.value;
+    if(!name){
+      saveStatusEl.textContent='불러올 멜로디를 선택하세요.';
+      return;
+    }
+
+    var songs=getSavedSongs();
+    var song=songs[name];
+    if(!song){
+      saveStatusEl.textContent='저장 데이터를 찾을 수 없습니다.';
+      refreshSavedSongs();
+      return;
+    }
+
+    stopPlayback();
+
+    sequence=(song.sequence || []).map(function(item){
+      return {
+        note:item.note,
+        beats:Number(item.beats),
+        rest:!!item.rest
+      };
+    });
+
+    if(song.key) keySelect.value=song.key;
+    if(song.bpm) bpmEl.value=song.bpm;
+    if(song.instrument) instrumentSelect.value=song.instrument;
+
+    songNameEl.value=name;
+    updateScaleHighlight();
+    renderSequence();
+
+    saveStatusEl.textContent='불러오기 완료 ✓';
+    statusEl.textContent='';
+  }
+
+  function deleteSelectedSong(){
+    var name=savedSongsEl.value;
+    if(!name){
+      saveStatusEl.textContent='삭제할 멜로디를 선택하세요.';
+      return;
+    }
+
+    var songs=getSavedSongs();
+    if(songs[name]){
+      delete songs[name];
+      try{
+        setSavedSongs(songs);
+        refreshSavedSongs();
+        if(songNameEl.value===name) songNameEl.value='';
+        saveStatusEl.textContent='삭제 완료';
+      }catch(e){
+        saveStatusEl.textContent='삭제에 실패했습니다.';
+      }
+    }
+  }
+
+  document.getElementById('saveSongBtn').addEventListener('click',saveCurrentSong);
+  document.getElementById('loadSongBtn').addEventListener('click',loadSelectedSong);
+  document.getElementById('deleteSongBtn').addEventListener('click',deleteSelectedSong);
+
+  refreshSavedSongs();
 
   document.getElementById('playBtn').addEventListener('click',playSequence);
   document.getElementById('stopBtn').addEventListener('click',stopPlayback);
